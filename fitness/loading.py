@@ -48,6 +48,15 @@ PROFILE_NUMBER_FIELDS = (
     "baseline_temperature",
 )
 
+# The columns each file has to supply before the program will read it. Extra
+# columns are ignored, so this catches a file that is not the one the program
+# was pointed at rather than policing the exact header.
+#
+# 'name' is not required, because build_participant() falls back to the ID when
+# there is no name to use.
+PROFILE_COLUMNS = ("participant_id",) + PROFILE_NUMBER_FIELDS
+SESSION_COLUMNS = ("session_id", "participant_id") + MEASUREMENT_FIELDS
+
 # Fields that are whole numbers. Everything else numeric becomes a float. A
 # heart rate of 68.0 is not wrong, but it reads badly in a report, and the
 # brief asks for suitable types rather than just "not a string".
@@ -122,6 +131,21 @@ def check_identifier(value, pattern, field, shape):
     if not pattern.fullmatch(value):
         raise InvalidIdentifierError(
             f"'{value}' is not a valid {field}, expected {shape}", field=field)
+
+
+def check_header(fieldnames, required):
+    """Reject a file whose header is missing columns the program needs.
+
+    One clear message about the file beats every row failing separately with a
+    confusing reason.
+    """
+    # DictReader leaves fieldnames as None when the file is completely empty.
+    present = set(fieldnames or ())
+    missing = [column for column in required if column not in present]
+    if missing:
+        raise InvalidRecordError(
+            f"header is missing the column{'' if len(missing) == 1 else 's'} "
+            f"{', '.join(missing)}", field="header")
 
 
 def check_row_length(row):
@@ -214,8 +238,11 @@ def read_participants(path):
     """Read the profiles file into {participant_id: Participant}.
 
     Returns (participants, rejected). A bad row is skipped and reported, and
-    the rest of the file is still read. A file that cannot be opened is left to
-    the caller, because the program has nothing to do without this file.
+    the rest of the file is still read.
+
+    Raises FileNotFoundError, PermissionError or InvalidRecordError, all of
+    which the caller handles by stopping, because the program has nothing to do
+    without this file.
     """
     participants = {}
     rejected = []
@@ -223,6 +250,7 @@ def read_participants(path):
 
     with open(path, encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle, restkey=EXTRA_COLUMNS)
+        check_header(reader.fieldnames, PROFILE_COLUMNS)
         # Row 1 is the header, so the first row of data is row 2. Counting the
         # file's own lines means a reported row number can be found by opening
         # the file and going to that line.
@@ -285,9 +313,15 @@ def read_session_file(path, participants, sessions, rejected):
     try:
         with open(path, encoding="utf-8", newline="") as handle:
             reader = csv.DictReader(handle, restkey=EXTRA_COLUMNS)
+            check_header(reader.fieldnames, SESSION_COLUMNS)
             for row_number, row in enumerate(reader, start=2):
                 read_session_row(row, row_number, source_file,
                                  participants, sessions, rejected)
+    except InvalidRecordError as error:
+        # Only check_header() can reach here. Every row level problem is
+        # caught inside read_session_row(), which never lets one escape.
+        rejected.append(RejectedRow(source_file, None, error.field,
+                                    f"{error}, file skipped", kind="file"))
     except FileNotFoundError:
         rejected.append(RejectedRow(source_file, None, "",
                                     "file not found, skipped", kind="file"))
