@@ -1,0 +1,5 @@
+# Standard library only. No external packages are needed, so there is
+# nothing to install.
+#
+# Modules used: argparse, csv, pathlib, re, statistics, sys, textwrap
+# and unittest. All of these ship with Python.
