@@ -1,0 +1,44 @@
+ASSIGNMENT II DATA DICTIONARY
+
+Same assignment from the first assignment can be chosen to continue. The CSV files are simulated and contain no real personal data.
+
+OPTION A FITNESS
+participants.csv
+- participant_id: P followed by three digits
+- name: simulated participant name
+- baseline_heart_rate: personal resting reference in beats per minute
+- baseline_skin_response: simulated skin-response reference
+- baseline_temperature: simulated skin-temperature reference in degrees Celsius
+
+fitness_sessions.csv and fitness_sessions_invalid.csv
+- session_id: FIT-YYYY-NNN
+- participant_id: must exist in participants.csv
+- timestamp: non-negative observation index
+- heart_rate: beats per minute
+- skin_response: simulated non-negative sensor value
+- temperature: simulated skin temperature in degrees Celsius
+- activity_level: normalized value from 0 to 1
+- signal_quality: normalized value from 0 to 1
+
+OPTION B PODCAST
+speakers.csv
+- speaker_id: S followed by three digits
+- name: simulated speaker name
+- baseline_pitch: usual pitch reference in hertz
+- baseline_energy: usual normalized energy reference
+- baseline_speech_rate: usual words-per-minute reference
+- baseline_pause_ratio: usual pause proportion
+
+recording_sessions.csv and recording_sessions_invalid.csv
+- recording_id: REC-YYYY-NNN
+- speaker_id: must exist in speakers.csv
+- timestamp: non-negative observation index
+- speech_present: True or False
+- pitch: pitch in hertz when speech is present
+- energy: normalized value from 0 to 1
+- speech_rate: words per minute
+- pause_ratio: normalized value from 0 to 1
+- background_noise: normalized value from 0 to 1
+- signal_quality: normalized value from 0 to 1
+
+Important: The invalid files intentionally contain malformed identifiers, missing fields, invalid types, unknown people and out-of-range values. Programs should report these records clearly and continue when safe.

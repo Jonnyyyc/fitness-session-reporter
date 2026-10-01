@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environment
+.venv/
+venv/
+
+# Output the program generates on every run
+output/
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
