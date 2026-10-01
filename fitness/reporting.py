@@ -45,7 +45,7 @@ IDENTITY_COLUMNS = (
     "participant_id",
     "participant_name",
     "classification",
-    "rows_total",
+    "rows_attributed",
     "rows_usable",
     "rows_flagged",
     "rows_rejected",
@@ -110,7 +110,7 @@ def summary_row(result):
         "participant_id": result["participant_id"],
         "participant_name": result["participant_name"],
         "classification": result["classification"],
-        "rows_total": counts["total"],
+        "rows_attributed": counts["total"],
         "rows_usable": counts["usable"],
         "rows_flagged": counts["flagged"],
         "rows_rejected": counts["rejected"],
@@ -169,7 +169,7 @@ def format_report(result):
     # 2. What arrived and what survived.
     counts = result["observations"]
     lines.append("OBSERVATIONS")
-    lines.append(f"  Total received      {counts['total']:>4}")
+    lines.append(f"  Rows attributed     {counts['total']:>4}")
     lines.append(f"  Usable              {counts['usable']:>4}")
     lines.append(f"    of which flagged  {counts['flagged']:>4}  (kept)")
     lines.append(f"  Rejected            {counts['rejected']:>4}")
@@ -276,6 +276,11 @@ def write_report_text(results, path):
         "SMART FITNESS SESSION ANALYZER",
         f"{len(results)} session{'' if len(results) == 1 else 's'} analysed.",
         "",
+        "A row is attributed to a session once its session ID and participant",
+        "ID have both been read and the participant is known. Rows rejected",
+        "before that point are not counted here; they are listed in",
+        "rejected_records.txt instead.",
+        "",
     ]
     for result in results:
         blocks.append(format_report(result))
@@ -300,6 +305,12 @@ def write_rejected_records(rejected, path):
     lines = ["REJECTED RECORDS",
              f"{len(rejected)} record{'' if len(rejected) == 1 else 's'} "
              f"rejected in total.",
+             "",
+             "A row counts towards a session's own totals only once its",
+             "session ID and participant ID have both been read and the",
+             "participant is known. A row rejected before that point still",
+             "names its session where the session ID was readable, marked",
+             "'not counted against it'.",
              ""]
 
     for kind, heading in groups:

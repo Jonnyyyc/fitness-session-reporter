@@ -98,7 +98,7 @@ class RejectedRow:
     """
 
     def __init__(self, source_file, row_number, field, reason,
-                 session_id="", kind="record"):
+                 session_id="", kind="record", counted=False):
         self.source_file = source_file
         # None means the whole file failed rather than one row inside it.
         self.row_number = row_number
@@ -108,6 +108,10 @@ class RejectedRow:
         # Either "identifier" or "record", taken from which exception was
         # raised. The rejection file groups by this.
         self.kind = kind
+        # Whether the row reached a session and so counts towards that
+        # session's own totals. A row can name a readable session and still not
+        # count, if its participant could not be read.
+        self.counted = counted
 
     def describe(self):
         """One readable line for rejected_records.txt."""
@@ -117,6 +121,8 @@ class RejectedRow:
         where = f"{self.source_file} row {self.row_number}"
         if self.session_id:
             where += f", session {self.session_id}"
+            if not self.counted:
+                where += " (not counted against it)"
         return f"{where}, field '{self.field}': {self.reason}"
 
     def __repr__(self):
@@ -344,22 +350,35 @@ def read_session_row(row, row_number, source_file, participants, sessions,
     source = f"{source_file} row {row_number}"
     session_id = (row.get("session_id") or "").strip()
 
-    # Steps 1 to 3. Until these pass there is no session to attribute the row
-    # to, so a failure here is reported and nothing more.
+    # Step 1. Without a readable session ID the row cannot be placed at all,
+    # so the rejection cannot even name a session.
     try:
         check_identifier(session_id, SESSION_ID_PATTERN,
                          "session_id", SESSION_ID_SHAPE)
+    except InvalidIdentifierError as error:
+        rejected.append(RejectedRow(source_file, row_number, error.field,
+                                    str(error), kind="identifier"))
+        return
+
+    # Steps 2 and 3. The session ID is readable now, so the rejection can say
+    # which session the row claimed to belong to. It still does not count
+    # towards that session, because without a participant there are no
+    # reference values to judge the row against, and the session may not even
+    # exist yet.
+    try:
         participant_id = (row.get("participant_id") or "").strip()
         check_identifier(participant_id, PARTICIPANT_ID_PATTERN,
                          "participant_id", PARTICIPANT_ID_SHAPE)
         participant = look_up_participant(participant_id, participants)
     except InvalidIdentifierError as error:
         rejected.append(RejectedRow(source_file, row_number, error.field,
-                                    str(error), kind="identifier"))
+                                    str(error), session_id=session_id,
+                                    kind="identifier"))
         return
     except InvalidRecordError as error:
         rejected.append(RejectedRow(source_file, row_number, error.field,
-                                    str(error), kind="record"))
+                                    str(error), session_id=session_id,
+                                    kind="record"))
         return
 
     # Step 4. The first row to reach this point creates the session, which is
@@ -387,7 +406,7 @@ def read_session_row(row, row_number, source_file, participants, sessions,
         session.record_rejection(str(error), source)
         rejected.append(RejectedRow(source_file, row_number, error.field,
                                     str(error), session_id=session_id,
-                                    kind="record"))
+                                    kind="record", counted=True))
         return
 
     session.add_observation(Observation(**values, flags=flags), source)
