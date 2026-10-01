@@ -1,24 +1,9 @@
 """Reading the CSV files and validating the rows they contain.
 
-This is the only module that opens an input file, and the only one that decides
-whether a row can be used. Everything downstream works with objects that have
-already been checked here.
-
-The checks on a session row run in a fixed order:
-
-    1. does the session ID match its pattern?
-    2. does the participant ID match its pattern?
-    3. is that participant in the profiles file?
-    4. does this row name the same participant as the rest of its session?
-    5. is the row itself usable: right length, no blanks, numbers that
-       convert, values in range, signal quality above the cutoff?
-
-A row that fails 1, 2 or 3 cannot be attributed to any session, so it is
-reported and nothing else happens to it. A row that gets past 3 has established
-a session, so a later failure is counted against that session as well as
-reported. One useful consequence is that a Session is only ever created by a
-row that already named a known participant, so a session never exists without
-one.
+The only module that opens an input file and the only one that decides whether
+a row can be used. A row is checked in this order: session ID, participant ID,
+is that participant known, does it match the rest of the session, then the
+measurements themselves.
 """
 
 import csv
@@ -28,44 +13,34 @@ from pathlib import Path
 from .errors import InvalidIdentifierError, InvalidRecordError
 from .models import FIELD_UNITS, MEASUREMENT_FIELDS, Observation, Participant, Session
 
-# Both patterns are anchored with ^ and $, and are used with fullmatch(), so
-# the whole value has to match. Without the anchors, a search would happily
-# accept 'XXP001YY'. Belt and braces, but the brief asks for anchored patterns
-# or full-match behaviour and this is both.
+# Anchored with ^ and $ and used with fullmatch(), so the whole value has to
+# match. Without that, 'XXP001YY' would be accepted.
 PARTICIPANT_ID_PATTERN = re.compile(r"^P\d{3}$")
 SESSION_ID_PATTERN = re.compile(r"^FIT-\d{4}-\d{3}$")
 
-# Said in words for the error messages, since a reader of the rejection file
-# should not have to know how to read a regular expression.
+# The same rules in words, for error messages.
 PARTICIPANT_ID_SHAPE = "P followed by three digits, like P001"
 SESSION_ID_SHAPE = "FIT-YYYY-NNN, like FIT-2026-001"
 
-# The numeric columns of participants.csv. 'name' is handled separately because
-# it is text, and 'participant_id' because it is checked against a pattern.
+# The numeric columns of participants.csv.
 PROFILE_NUMBER_FIELDS = (
     "baseline_heart_rate",
     "baseline_skin_response",
     "baseline_temperature",
 )
 
-# The columns each file has to supply before the program will read it. Extra
-# columns are ignored, so this catches a file that is not the one the program
-# was pointed at rather than policing the exact header.
-#
-# 'name' is not required, because build_participant() falls back to the ID when
-# there is no name to use.
+# The columns each file must have. Extra columns are ignored, so this catches
+# the wrong file rather than policing the header. 'name' is optional, because
+# build_participant() falls back to the ID.
 PROFILE_COLUMNS = ("participant_id",) + PROFILE_NUMBER_FIELDS
 SESSION_COLUMNS = ("session_id", "participant_id") + MEASUREMENT_FIELDS
 
-# Fields that are whole numbers. Everything else numeric becomes a float. A
-# heart rate of 68.0 is not wrong, but it reads badly in a report, and the
-# brief asks for suitable types rather than just "not a string".
+# Whole numbers. Everything else numeric becomes a float, since a heart rate
+# of 68.0 reads badly in a report.
 INTEGER_FIELDS = ("timestamp", "heart_rate", "baseline_heart_rate")
 
-# Ranges a reading must fall inside to be believable at all. A value outside
-# these is not a poor reading, it is an impossible one, so the row is rejected
-# rather than kept with a warning. None as the upper bound means there is no
-# ceiling: a session can run for any length of time.
+# A value outside these is impossible rather than just poor, so the row is
+# rejected. None as the upper bound means no ceiling.
 VALUE_RANGES = {
     "timestamp": (0, None),
     "heart_rate": (20, 250),
@@ -75,26 +50,21 @@ VALUE_RANGES = {
     "signal_quality": (0.0, 1.0),
 }
 
-# The documented signal quality rule the brief asks for, in two tiers. Below
-# 0.50 the reading is closer to noise than signal and is rejected. Between 0.50
-# and 0.70 it is doubtful but still evidence, so it is kept and marked, because
-# throwing it away can push a session under the minimum number of readings for
-# no good reason.
+# Below 0.50 the reading is rejected. Between 0.50 and 0.70 it is doubtful but
+# still useful, so it is kept and marked.
 SIGNAL_QUALITY_REJECT = 0.50
 SIGNAL_QUALITY_FLAG = 0.70
 
-# csv.DictReader puts any columns beyond the header into a list under this key.
-# That is how a row with too many columns is detected; a row with too few shows
-# up as a None value instead.
+# csv.DictReader puts extra columns in a list under this key. A row with too
+# few columns shows up as a None value instead.
 EXTRA_COLUMNS = "extra_columns"
 
 
 class RejectedRow:
     """One row, or one whole file, that could not be used, and why.
 
-    The brief asks for the source filename, row number, field and reason for
-    every rejection, so all four are kept apart rather than being written into
-    one sentence that would have to be parsed back open later.
+    The file, row number, field and reason are kept apart so the report can use
+    them separately.
     """
 
     def __init__(self, source_file, row_number, field, reason,
@@ -105,12 +75,9 @@ class RejectedRow:
         self.field = field
         self.reason = reason
         self.session_id = session_id
-        # Either "identifier" or "record", taken from which exception was
-        # raised. The rejection file groups by this.
+        # "identifier" or "record". The rejection file groups by this.
         self.kind = kind
-        # Whether the row reached a session and so counts towards that
-        # session's own totals. A row can name a readable session and still not
-        # count, if its participant could not be read.
+        # Whether the row reached a session and counts towards its totals.
         self.counted = counted
 
     def describe(self):
@@ -243,12 +210,8 @@ def look_up_participant(participant_id, participants):
 def read_participants(path):
     """Read the profiles file into {participant_id: Participant}.
 
-    Returns (participants, rejected). A bad row is skipped and reported, and
-    the rest of the file is still read.
-
-    Raises FileNotFoundError, PermissionError or InvalidRecordError, all of
-    which the caller handles by stopping, because the program has nothing to do
-    without this file.
+    Returns (participants, rejected). A bad row is skipped and reported. A file
+    that cannot be read raises, and main.py stops.
     """
     participants = {}
     rejected = []
@@ -360,11 +323,9 @@ def read_session_row(row, row_number, source_file, participants, sessions,
                                     str(error), kind="identifier"))
         return
 
-    # Steps 2 and 3. The session ID is readable now, so the rejection can say
-    # which session the row claimed to belong to. It still does not count
-    # towards that session, because without a participant there are no
-    # reference values to judge the row against, and the session may not even
-    # exist yet.
+    # Steps 2 and 3. The session ID is readable, so the rejection can name the
+    # session, but the row still does not count towards it without a
+    # participant.
     try:
         participant_id = (row.get("participant_id") or "").strip()
         check_identifier(participant_id, PARTICIPANT_ID_PATTERN,

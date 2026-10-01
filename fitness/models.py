@@ -1,22 +1,16 @@
 """Classes for a participant, a single reading and a whole session.
 
-This is where the object-oriented parts of the design live:
+Composition is Session holding a Participant and a list of Observations.
+Encapsulation is the two heart rates behind properties. Inheritance is Athlete.
 
-    composition    Session holds a Participant and a list of Observations
-    encapsulation  the two heart rates sit behind properties on Participant
-    inheritance    Athlete overrides one method on Participant
-    class method   Participant.from_profile() builds from a CSV row
-
-Nothing here reads a file or validates a row. By the time a reading reaches a
-Session, loading.py has already checked it.
+Nothing here reads a file or validates a row; loading.py does that first.
 """
 
 from .analysis import (classify_session, compare_to_reference, detect_recovery,
                        summarise)
 
-# Every sensor reading carries these six fields, in this spelling. The session
-# CSV uses the same column names, which is what lets loading.py read a row into
-# this shape without translating anything.
+# Every reading has these six fields. The CSV uses the same column names, so
+# no translation is needed.
 MEASUREMENT_FIELDS = (
     "timestamp",
     "heart_rate",
@@ -36,20 +30,16 @@ FIELD_UNITS = {
     "signal_quality": "",
 }
 
-# participants.csv has no maximum heart rate column, and no age to estimate one
-# from, so every participant gets the same assumed maximum. 190 is roughly what
-# the usual 220 minus age rule gives for a thirty year old. Both heart rate
-# bands are fractions of the span between resting and this number, so every
-# band in the report rests on it. That is why it is named here instead of
-# sitting as a bare 190 in a function signature.
+# participants.csv has no maximum heart rate and no age to estimate one from,
+# so everyone gets the same assumed maximum. 190 is roughly what 220 minus age
+# gives at thirty. Both heart rate bands depend on it.
 DEFAULT_MAX_HEART_RATE = 190
 
 
 def require_number(label, value):
     """Raise ValueError unless value is a real number."""
-    # A Python quirk makes the bool check necessary: True is technically the
-    # number 1, so without this a resting heart rate of True would be accepted
-    # and silently treated as 1 bpm.
+    # True is technically the number 1 in Python, so without the bool check a
+    # heart rate of True would be read as 1 bpm.
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError(f"{label} must be a number, got {type(value).__name__}")
     return value
@@ -62,9 +52,7 @@ class Participant:
     the two have to stay consistent with each other.
     """
 
-    # The columns from participants.csv that a profile must supply. 'name' is
-    # not required: a participant with no name is still usable, one with no
-    # reference values is not.
+    # What a profile must supply. 'name' is optional, reference values are not.
     PROFILE_FIELDS = ("participant_id", "baseline_heart_rate",
                       "baseline_temperature", "baseline_skin_response")
 
@@ -78,10 +66,8 @@ class Participant:
         # Set before the resting rate, so the resting setter can tell there is
         # no maximum to cross-check against yet.
         self._max_heart_rate = None
-        # Assigning to the property names, without the underscore, runs the
-        # setters below. So the checks apply when the object is built, which is
-        # the most likely place a bad value gets in, and not only when one is
-        # changed later.
+        # Assigning without the underscore runs the setters, so the checks
+        # apply when the object is built, not only when a value is changed.
         self.resting_heart_rate = resting_heart_rate
         self.max_heart_rate = max_heart_rate
 
@@ -91,10 +77,8 @@ class Participant:
 
         The values must already be numbers; loading.py converts them.
         """
-        # Built with cls() rather than Participant(), so Athlete.from_profile()
-        # returns an Athlete. This is the only place a participant is created
-        # from file data, so it is also the only place the CSV column names
-        # appear in this module.
+        # Built with cls() rather than Participant(), so
+        # Athlete.from_profile() returns an Athlete.
         missing = [field for field in cls.PROFILE_FIELDS if field not in profile]
         if missing:
             raise ValueError("profile is missing " + ", ".join(missing))
@@ -206,18 +190,16 @@ class Observation:
 class Session:
     """One recording: a participant, and the readings taken from them.
 
-    This is the composition in the design. A Session is built only once a row
-    has named a participant who exists, so self.participant is always a real
-    Participant and never None.
+    A Session is only built once a row names a participant who exists, so
+    self.participant is never None.
     """
 
     def __init__(self, session_id, participant):
         self.session_id = session_id
         self.participant = participant
         self.observations = []
-        # Notes kept in two lists rather than one, so the report can group them
-        # without parsing the text back apart. Each note names the file and row
-        # it came from, so the original order is still recoverable from either.
+        # Two lists rather than one, so the report can group them. Each note
+        # names the file and row it came from.
         self.flag_notes = []
         self.rejection_notes = []
 
@@ -257,10 +239,10 @@ class Session:
         return self.usable_count + self.rejected_count
 
     def analyse(self):
-        """Run the whole analysis and return the structured result.
+        """Run the analysis and return the result as a dictionary.
 
-        This dictionary is what both output files are written from, so neither
-        of them does any calculation of its own.
+        Both output files are written from this, so neither calculates
+        anything itself.
         """
         observations = self.ordered_observations()
         summary = summarise(observations)
@@ -286,8 +268,7 @@ class Session:
             "summary": summary,
             "comparison": comparison,
             "recovery": recovery,
-            # Copies, so a caller holding the result cannot change the
-            # session's own record of what happened.
+            # Copies, so the caller cannot change the session's own record.
             "flag_notes": list(self.flag_notes),
             "rejection_notes": list(self.rejection_notes),
         }

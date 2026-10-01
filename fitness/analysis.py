@@ -1,19 +1,14 @@
 """Summary calculations and the rules that classify a session.
 
-Nothing here reads a file or prints anything. Every function takes the data it
-needs as an argument and returns a value, which is what makes them easy to test
-one at a time.
-
-The thresholds that belong to a person (heart rate bands, recovery) are not in
-this module. They are read from the participant object that gets passed in, so
-two people with identical readings can be described differently.
+Nothing here reads a file or prints. Per-person thresholds are read from the
+participant passed in, so two people with the same readings can get different
+answers.
 """
 
 import statistics
 
-# The measurements worth summarising. 'timestamp' orders the session rather
-# than measuring the person, and 'signal_quality' describes the sensor rather
-# than the body, so an average of either would mean nothing.
+# timestamp orders the session and signal_quality describes the sensor, so
+# averaging either would mean nothing.
 SUMMARY_FIELDS = (
     "heart_rate",
     "skin_response",
@@ -21,14 +16,12 @@ SUMMARY_FIELDS = (
     "activity_level",
 )
 
-# How far skin temperature must differ from the participant's own normal before
-# the report calls it a difference rather than ordinary drift. This only affects
-# wording: no classification decision reads this value.
+# How far temperature must differ from normal before the report says so.
+# Wording only; no classification reads this.
 TEMPERATURE_TOLERANCE = 0.5
 
-# Below this many usable observations, no verdict is given. Four readings can be
-# four seconds or four minutes apart, and a third of four is one reading, which
-# is too little to call a trend either way.
+# Below this many usable readings, no verdict is given. A third of four
+# readings is one reading, which is too little to call a trend.
 MINIMUM_USABLE_OBSERVATIONS = 5
 
 # Activity level is already a 0 to 1 scale that means the same for everyone, so
@@ -42,9 +35,8 @@ def summarise(observations):
 
     Returns {field: {"avg", "min", "max"}}, or {} for an empty list.
     """
-    # An empty list returns {} rather than raising, so a session with nothing
-    # usable travels the same path as any other and gets labelled further down
-    # instead of blowing up here.
+    # {} rather than raising, so an empty session follows the normal path and
+    # gets labelled further down.
     if not observations:
         return {}
 
@@ -108,10 +100,8 @@ def compare_to_reference(summary, participant):
         },
     }
 
-    # participants.csv supplies a skin response baseline for everyone, so in an
-    # ordinary run this is always true. The check stays because a participant
-    # built by hand in a test need not have one, and inventing a reference would
-    # compare the session against a number nobody measured.
+    # Always true in a real run, since the CSV supplies one for everyone. The
+    # check is for participants built by hand in tests.
     if participant.normal_skin_response is not None:
         average_skin_response = summary["skin_response"]["avg"]
         comparison["skin_response"] = {
@@ -125,8 +115,8 @@ def compare_to_reference(summary, participant):
 
 def split_into_thirds(observations):
     """Split time-ordered observations into three consecutive parts."""
-    # Uneven counts put the remainder in the later parts, so the final third is
-    # never the smallest. Recovery is judged on that final third.
+    # Uneven counts put the remainder in the later parts, so the final third,
+    # which recovery is judged on, is never the smallest.
     count = len(observations)
     first_boundary = count // 3
     second_boundary = 2 * count // 3
@@ -143,8 +133,7 @@ def detect_recovery(observations, participant):
     Returns a dict where 'detected' is the verdict and the rest is the evidence
     behind it, so the report can explain itself either way.
     """
-    # Thresholds come from the participant rather than being written in here,
-    # which is what lets an Athlete be judged by a stricter number.
+    # From the participant, so an Athlete is judged by a stricter number.
     thresholds = participant.recovery_thresholds()
     bands = participant.heart_rate_bands()
 
@@ -160,9 +149,8 @@ def detect_recovery(observations, participant):
         return {**not_detected,
                 "reason": "too few observations to compare start and end"}
 
-    # Measured against the peak third rather than the first, because a session
-    # that starts calm, works hard and then eases off has its peak in the
-    # middle, and comparing the end against the start would miss the effort.
+    # Against the peak third, not the first, because a session that starts
+    # calm and works hard has its peak in the middle.
     thirds = split_into_thirds(observations)
     heart_rates = [statistics.mean([obs.heart_rate for obs in part])
                    for part in thirds]
@@ -176,9 +164,8 @@ def detect_recovery(observations, participant):
     final_activity = activities[-1]
 
     heart_rate_drop = (peak_heart_rate - final_heart_rate) / peak_heart_rate
-    # Activity can legitimately be 0.0 at the peak, for someone at rest the
-    # whole time. Nothing fell, so the drop is zero rather than a division by
-    # zero.
+    # Activity can be 0.0 at the peak for someone at rest throughout, so the
+    # drop is zero rather than a division by zero.
     if peak_activity > 0:
         activity_drop = (peak_activity - final_activity) / peak_activity
     else:
@@ -198,8 +185,8 @@ def detect_recovery(observations, participant):
         "required": thresholds,
     }
 
-    # All three must hold. Without the third test, someone sitting still whose
-    # heart rate drifts down would be reported as recovering from nothing.
+    # All three must hold, or someone sitting still whose heart rate drifts
+    # down would count as recovering.
     detected = (
         heart_rate_drop >= thresholds["heart_rate_drop"]
         and activity_drop >= thresholds["activity_drop"]
@@ -229,9 +216,8 @@ def classify_session(summary, participant, usable_count, recovery):
     Checks run in this order: insufficient data, recovering, high, moderate,
     resting.
     """
-    # Insufficient data comes first because every figure below is calculated
-    # from readings that may not exist. This is the distinction the brief asks
-    # for: too little data is not the same answer as a normal result.
+    # First, because everything below is calculated from readings that may not
+    # exist. Too little data is not the same answer as a normal result.
     if usable_count < MINIMUM_USABLE_OBSERVATIONS:
         return ("insufficient data",
                 f"Only {usable_count} usable observation"
@@ -244,9 +230,8 @@ def classify_session(summary, participant, usable_count, recovery):
     average_activity = summary["activity_level"]["avg"]
     zone = heart_rate_zone(average_heart_rate, bands)
 
-    # Recovery is checked before high activity because a hard session ending in
-    # a cooldown satisfies both tests, and 'recovering' is the more specific
-    # statement of the two.
+    # Before high activity, because a hard session ending in a cooldown meets
+    # both tests and 'recovering' says more.
     if recovery["detected"]:
         explanation = (
             f"Recovering: between the session's peak third and its final "
@@ -262,8 +247,8 @@ def classify_session(summary, participant, usable_count, recovery):
             f"above the elevated band ({recovery['elevated_band']:.1f} bpm), "
             f"so there was real effort to recover from."
         )
-        # A cooldown session also passes the intensity tests. Say so, rather
-        # than letting the reader think the effort went unnoticed.
+        # Say when the intensity tests also passed, so the effort is not
+        # left looking unnoticed.
         if zone == "high" or average_activity >= HIGH_ACTIVITY_LEVEL:
             explanation += (" The session also met the high-activity test; "
                             "'recovering' is reported because it is the more "

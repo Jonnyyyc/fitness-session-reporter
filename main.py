@@ -5,14 +5,8 @@ Run from the repository root. With no arguments it reads the official files:
     python3 main.py          (macOS / Linux)
     python main.py           (Windows)
 
-The paths can be given instead, and more than one session file is allowed:
-
-    python3 main.py --profiles data/participants.csv \
-        --sessions data/fitness_sessions.csv data/fitness_sessions_invalid.csv \
-        --output output
-
-This file holds no analysis. It reads the arguments, calls the package in
-order, and prints what happened.
+Paths can be given with --profiles, --sessions and --output. This file holds no
+analysis; it reads the arguments, calls the package and prints what happened.
 
 Author: Jonathan Christensen
 """
@@ -24,9 +18,8 @@ from fitness.errors import InvalidRecordError
 from fitness.loading import read_participants, read_sessions
 from fitness.reporting import write_reports
 
-# Defaults, so that `python main.py` on its own does the expected thing. They
-# are relative to wherever the program is started, which the brief says is the
-# repository root. Nothing here is an absolute path.
+# Defaults, so `python main.py` alone works. Relative to where the program is
+# started, which is the repository root.
 DEFAULT_PROFILES = "data/participants.csv"
 DEFAULT_SESSIONS = ["data/fitness_sessions.csv",
                     "data/fitness_sessions_invalid.csv"]
@@ -41,9 +34,8 @@ def parse_arguments(argv=None):
     parser.add_argument("--profiles", default=DEFAULT_PROFILES,
                         help=f"participant profile file "
                              f"(default: {DEFAULT_PROFILES})")
-    # nargs="+" accepts one path or several, so the single file example in the
-    # brief works unchanged and both official session files can be given at
-    # once, which section 4.1 asks for.
+    # nargs="+" takes one path or several, so both session files can be given
+    # at once.
     parser.add_argument("--sessions", nargs="+", default=DEFAULT_SESSIONS,
                         help="one or more session files (default: both "
                              "official files)")
@@ -69,10 +61,8 @@ def main(argv=None):
     """Run the whole program. Returns the exit code."""
     arguments = parse_arguments(argv)
 
-    # The profiles file is the one file the program cannot do without. Every
-    # session row is matched against it, so without it every row would be
-    # rejected and all three reports would be empty. Better to say so and
-    # stop than to write three useless files.
+    # Without the profiles file every row would be rejected and the reports
+    # would be empty, so stopping says more than writing them.
     try:
         participants, rejected = read_participants(arguments.profiles)
     except (FileNotFoundError, PermissionError, InvalidRecordError) as error:
@@ -80,14 +70,13 @@ def main(argv=None):
               file=sys.stderr)
         return 1
 
-    # A session file that cannot be read is reported inside read_sessions and
-    # the remaining files are still read, so there is nothing to catch here.
+    # read_sessions reports a file it cannot read and carries on, so there is
+    # nothing to catch here.
     sessions, session_rejections = read_sessions(arguments.sessions,
                                                  participants)
     rejected.extend(session_rejections)
 
-    # Sorted so that two runs over the same data produce the same file, which
-    # is what makes a rerun comparable to the run before it.
+    # Sorted, so two runs over the same data produce the same file.
     results = [sessions[session_id].analyse()
                for session_id in sorted(sessions)]
 
@@ -102,6 +91,5 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    # sys.exit sets the shell's exit code, so a failed run can be noticed by
-    # whatever started the program rather than only by reading the output.
+    # sys.exit sets the shell's exit code, so a failed run can be noticed.
     sys.exit(main())

@@ -1,12 +1,10 @@
 """Writing the summary, the readable report and the rejection list.
 
-Three files go into the output folder, which is created if it is not there.
-Each run replaces them rather than adding to them, so running the program twice
-gives the same result without any cleanup in between.
+The output folder is created if missing, and each run replaces the files, so a
+second run needs no cleanup.
 
-Nothing here calculates anything. Every number comes from the result dictionary
-that Session.analyse() returns, so a figure in the CSV and the same figure in
-the text report cannot disagree. Rounding happens here and nowhere else.
+Nothing here calculates. Every number comes from the dictionary
+Session.analyse() returns, and rounding happens here and nowhere else.
 """
 
 import csv
@@ -28,9 +26,8 @@ FIELD_LABELS = {
     "activity_level": "Activity level",
 }
 
-# Decimal places for each measurement. One suits the sensor readings, but
-# activity_level is a 0 to 1 scale where one decimal leaves only ten possible
-# values and anything under 0.05 collapses to zero, so it gets two.
+# One decimal suits the sensor readings. activity_level gets two, since one
+# decimal on a 0 to 1 scale leaves only ten possible values.
 FIELD_DECIMALS = {
     "heart_rate": 1,
     "skin_response": 1,
@@ -38,8 +35,8 @@ FIELD_DECIMALS = {
     "activity_level": 2,
 }
 
-# One row per session. The identifiers and counts always have a value. The
-# measurement columns are empty when a session had nothing usable to measure.
+# One row per session. The measurement columns are empty when a session had
+# nothing usable.
 IDENTITY_COLUMNS = (
     "session_id",
     "participant_id",
@@ -71,10 +68,9 @@ def rounded(value, field):
 
 
 def signed(value, places=1):
-    """Format a difference with its sign, without printing a stray '-0.0'.
+    """Format a difference with its sign, avoiding a stray '-0.0'.
 
-    A difference of -0.04 rounds to -0.0, which reads like a bug. It is zero at
-    the precision being shown, so it is printed as +0.0 instead.
+    A difference of -0.04 rounds to -0.0, which reads like a bug.
     """
     # -0.0 == 0 is True in Python, so this catches the negative zero as well.
     if round(value, places) == 0:
@@ -85,8 +81,7 @@ def signed(value, places=1):
 def write_reports(results, rejected, output_dir):
     """Write all three files and return the paths, in the order written."""
     directory = Path(output_dir)
-    # parents=True so a nested path works, exist_ok=True so a second run does
-    # not fail on a folder that is already there.
+    # exist_ok=True so a second run does not fail on an existing folder.
     directory.mkdir(parents=True, exist_ok=True)
 
     summary_path = directory / SUMMARY_FILENAME
@@ -116,9 +111,8 @@ def summary_row(result):
         "rows_rejected": counts["rejected"],
     }
 
-    # A session with nothing usable leaves these columns empty rather than
-    # writing a zero. Zero is a measurement; an empty cell is the absence of
-    # one, and the two should not look the same in a spreadsheet.
+    # Empty rather than zero. Zero is a measurement, an empty cell is the
+    # absence of one.
     if not summary:
         for column in MEASUREMENT_COLUMNS:
             row[column] = ""
@@ -141,8 +135,8 @@ def summary_row(result):
 
 def write_summary_csv(results, path):
     """Write one row per session, in session ID order."""
-    # newline="" is what the csv module asks for. Without it, Windows turns
-    # every line ending into a blank line between rows.
+    # newline="" is what the csv module asks for. Without it Windows puts a
+    # blank line between rows.
     with open(path, "w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=SUMMARY_COLUMNS)
         writer.writeheader()
@@ -153,8 +147,7 @@ def write_summary_csv(results, path):
 def format_report(result):
     """Render one analysis result as plain text.
 
-    Returns a string rather than printing, so the caller decides where it goes
-    and a test can read it directly.
+    Returns a string rather than printing, so a test can read it directly.
     """
     width = REPORT_WIDTH
     lines = []
@@ -239,8 +232,7 @@ def format_report(result):
                      f"{required['activity_drop']:.0%} required)")
     else:
         lines.append("  Not detected.")
-        # The reason can be a full sentence, so it wraps rather than running
-        # off the edge of the page.
+        # The reason is a full sentence, so it wraps.
         for line in textwrap.wrap(recovery["reason"], width=width - 4):
             lines.append(f"    {line}")
     lines.append("")
@@ -292,10 +284,8 @@ def write_report_text(results, path):
 
 def write_rejected_records(rejected, path):
     """Write every rejected row, grouped by what kind of problem it was."""
-    # Grouped rather than listed in arrival order, because the three kinds have
-    # different causes: a file that could not be read is a setup problem, a
-    # malformed identifier is a typo, and unusable data is a sensor or entry
-    # problem. The 'kind' on each RejectedRow is what makes this possible.
+    # Grouped rather than in arrival order, because the three kinds have
+    # different causes and a reader usually chases one of them.
     groups = [
         ("file", "FILES THAT COULD NOT BE READ"),
         ("identifier", "MALFORMED IDENTIFIERS"),

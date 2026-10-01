@@ -5,16 +5,12 @@ Run from the repository root:
     python3 -m unittest tests.py     (macOS / Linux)
     python -m unittest tests.py      (Windows)
 
-Every test that needs a file writes its own into a temporary folder that is
-deleted afterwards, so nothing here depends on the official CSV files being
-present or unchanged. The two tests that do read the official files say so in
-their name.
+Tests that need a file write their own into a temporary folder, so the suite
+does not depend on data/. TestTheOfficialFiles is the exception and skips
+itself when those files are missing.
 
-One lesson from building this is worth repeating here. While testing the
-participant mismatch rule by hand, the test looked like it passed when the row
-had actually been rejected one step earlier for a different reason, so the code
-being aimed at never ran. Several tests below therefore assert on the specific
-reason text, not just on the fact that something was rejected.
+Rejection tests assert on the reason text, not just that something was
+rejected, so a test cannot pass for the wrong reason.
 """
 
 import contextlib
@@ -199,9 +195,8 @@ class TestInvalidData(TempFileTestCase):
 class TestParticipantMismatch(TempFileTestCase):
     """A row naming a different known participant from the rest of its session.
 
-    This is the test that fooled me by hand. If P002 is not in the profiles
-    file, the row is rejected one step earlier as an unknown participant and
-    the mismatch code never runs, so the test asserts on the reason text.
+    If P002 is missing from the profiles file the row is rejected one step
+    earlier instead, so these tests check the reason text.
     """
 
     def test_mismatched_row_is_rejected_and_counted(self):
@@ -515,10 +510,8 @@ class TestAnalysis(unittest.TestCase):
     def test_the_comparison_uses_the_participants_own_references(self):
         """Two people, the same readings, different answers.
 
-        Activity is kept low on purpose. Activity level is a 0 to 1 scale that
-        means the same for everyone, so an activity of 0.5 would classify both
-        as moderate whatever their heart rates, and the test would pass without
-        showing anything. Only heart rate is per-person.
+        Activity is low on purpose: it means the same for everyone, so a high
+        value would classify both as moderate and prove nothing.
         """
         observations = self.observations([95] * 6, [0.05] * 6)
         summary = summarise(observations)
@@ -605,11 +598,8 @@ class TestCommandLine(TempFileTestCase):
         self.output = self.folder / "out"
 
     def run_main(self, arguments):
-        """Call main() with its printed output captured.
-
-        main() prints the completion summary to stdout and its failure
-        messages to stderr. Both are captured, so the test results stay
-        readable and the messages can be asserted on instead.
+        """Call main() with stdout and stderr captured, so the test output
+        stays readable and the messages can be asserted on.
         """
         out, err = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
