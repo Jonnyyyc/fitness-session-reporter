@@ -16,7 +16,7 @@ Standard library only, no third-party packages, so there is nothing to install.
 needs anything newer than 3.10: every file parses under the 3.10 grammar, and
 the only modules used are `argparse`, `contextlib`, `csv`, `io`, `pathlib`,
 `re`, `shutil`, `statistics`, `sys`, `tempfile`, `textwrap` and `unittest`.
-Older versions than 3.10 have not been tried.
+It has only been run on 3.14.
 
 ## Running it
 
@@ -185,9 +185,39 @@ A session gets the first of these labels that applies:
 
 1. **insufficient data**, if fewer than five readings were usable
 2. **recovering**, if heart rate and activity both fell enough towards the end
-3. **high activity**
-4. **moderate activity**
-5. **resting**
+3. **high activity**, if average heart rate reached the high band **or** average
+   activity level reached 0.60
+4. **moderate activity**, if average heart rate reached the elevated band **or**
+   average activity level reached 0.20
+5. **resting**, if neither test was met
+
+Either half of a test is enough on its own, so a session with a low heart rate
+but a lot of movement still counts, and so does the other way round.
+
+### The two heart rate bands
+
+The bands are worked out per person from **heart rate reserve**, which is
+maximum heart rate minus resting heart rate:
+
+```
+reserve       = max heart rate - resting heart rate
+elevated band = resting heart rate + 20% of reserve
+high band     = resting heart rate + 50% of reserve
+```
+
+For Amina Noor, with a resting rate of 68 and the assumed maximum of 190, the
+reserve is 122, so her elevated band is 92.4 bpm and her high band is 129.0 bpm.
+Someone with a different resting rate gets different bands from the same
+formula, which is the point: the same reading is not the same effort for two
+different people.
+
+Activity level needs no such adjustment. It is already a 0 to 1 scale that means
+the same for everyone, so 0.20 and 0.60 are used directly.
+
+One thing that catches the eye: 20% turns up in the elevated band and 0.20 turns
+up as the moderate activity level. They are unrelated, one is a share of a heart
+rate range and the other is a point on a fixed scale. The matching number is a
+coincidence.
 
 Recovery is checked before high activity because a hard session ending in a
 cooldown satisfies both tests, and recovering is the more specific statement.
