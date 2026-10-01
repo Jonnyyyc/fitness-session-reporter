@@ -10,7 +10,13 @@ reads the same kind of data from CSV files, checks every row, writes the results
 to three report files, and keeps going when a row or a whole file turns out to
 be unusable.
 
-Python 3, standard library only. No third-party packages.
+Standard library only, no third-party packages, so there is nothing to install.
+
+**Python 3.10 or newer.** It was written and run on 3.14, and nothing in it
+needs anything newer than 3.10: every file parses under the 3.10 grammar, and
+the only modules used are `argparse`, `contextlib`, `csv`, `io`, `pathlib`,
+`re`, `shutil`, `statistics`, `sys`, `tempfile`, `textwrap` and `unittest`.
+Older versions than 3.10 have not been tried.
 
 ## Running it
 
@@ -26,17 +32,32 @@ On Windows the command is `python` rather than `python3`:
 python main.py
 ```
 
-With no arguments the program reads `data/participants.csv` and both official
-session files, and writes to `output/`. The paths can be given instead:
+That is the normal way to run it. With no arguments the program reads
+`data/participants.csv` and **both** official session files, the valid one and
+the deliberately invalid one, and writes its results to `output/`.
+
+The paths can also be given on the command line:
 
 ```
 python3 main.py --profiles data/participants.csv --sessions data/fitness_sessions.csv --output output
 ```
 
-`--sessions` takes one path or several, so both session files can be read in one
-run. The output folder is created if it does not exist, and running the program
-again replaces the files rather than adding to them, so there is nothing to
-clean up in between.
+That is the exact command printed in the assignment brief, and it works, but
+note that it loads only the valid session file. It reports 5 sessions rather
+than 8, because the three sessions in `fitness_sessions_invalid.csv` are not
+read at all.
+
+`--sessions` takes one path or several, so both files can be passed explicitly:
+
+```
+python3 main.py --profiles data/participants.csv --sessions data/fitness_sessions.csv data/fitness_sessions_invalid.csv --output output
+```
+
+which does the same thing as running with no arguments.
+
+The output folder is created if it does not exist, and running the program again
+replaces the files rather than adding to them, so there is nothing to clean up
+in between.
 
 Tests:
 
@@ -338,5 +359,3 @@ no column for it.
 ## Submission
 
 Repository: https://github.com/Jonnyyyc/fitness-session-reporter
-
-Commit hash: to be filled in from the final commit before submitting.
