@@ -1,0 +1,5 @@
+# Let Git normalise line endings in text files it manages.
+* text=auto
+
+# Leave the official assignment data exactly as it was supplied.
+*.csv -text
